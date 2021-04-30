@@ -1,0 +1,574 @@
+{
+    "debug": false,
+    "log_dir": "{e[PM_HOME]}/SessLogs",
+    "argparse": {
+        "description": "Read the specified Informatica session log and determine which settings to update in the repository to improve future run-time performance.",
+        "args": [
+            {
+                "name": "log_file",
+                "help": "Informatica log file in proprietary binary format."
+            }
+        ]
+    },
+    "infacmd": [
+        "{e[INFA_HOME]}/isp/bin/infacmd.sh",
+        "ConvertLogFile",
+        "-in",
+        "{s[log_file]}",
+        "-fm",
+        "XML",
+        "-lo",
+        "{s[log_file]}.xml"
+    ],
+    "sqlplus": [
+        "{e[ORACLE_HOME]}/bin/sqlplus",
+        "-s",
+        "{e[INFA_REPO_USR]}/{e[INFA_REPO_PWD]}@{e[ORACLE_SID]}.autodesk.com"
+    ],
+    "message_codes": {
+        "CMN_1790": {
+            "description": "Recommended data cache size for aggregator.",
+            "args": [
+                "rows",
+                "widget_instance_name",
+                "log_data_cache_bytes"
+            ]
+        },
+        "CMN_1791": {
+            "description": "Recommended index cache size for aggregator.",
+            "args": [
+                "rows",
+                "widget_instance_name",
+                "log_index_cache_bytes"
+            ]
+        },
+        "CMN_1792": {
+            "description": "Recommended data cache size for lookup.",
+            "args": [
+                "rows",
+                "widget_instance_name",
+                "log_data_cache_bytes"
+            ]
+        },
+        "CMN_1793": {
+            "description": "Recommended index cache size for lookup.",
+            "args": [
+                "rows",
+                "widget_instance_name",
+                "log_index_cache_bytes"
+            ]
+        },
+        "CMN_1794": {
+            "description": "Recommended data cache size for joiner.",
+            "args": [
+                "rows",
+                "widget_instance_name",
+                "log_data_cache_bytes"
+            ]
+        },
+        "CMN_1795": {
+            "description": "Recommended index cache size for joiner.",
+            "args": [
+                "rows",
+                "widget_instance_name",
+                "log_index_cache_bytes"
+            ]
+        },
+        "SORT_40419": {
+            "description": "Initial data cache size for sorter.",
+            "args": [
+                "widget_instance_name",
+                "init_data_cache_bytes"
+            ]
+        },
+        "SORT_40422": {
+            "description": "Actual used data cache size for sorter.",
+            "args": [
+                "widget_instance_name",
+                "used_data_cache_bytes"
+            ]
+        },
+        "TM_6014": {
+            "description": "Instance name of session.",
+            "args": [
+                "session_instance_name",
+                "start_time"
+            ]
+        },
+        "TM_6187": {
+            "description": "Commit interval.",
+            "args": [
+                "commit_interval"
+            ]
+        },
+        "TM_6683": {
+            "description": "Name of Informatica repository.",
+            "args": [
+                "repository_name"
+            ]
+        },
+        "TM_6685": {
+            "description": "Name of top-level workflow.",
+            "args": [
+                "workflow_name",
+                "instance_name",
+                "workflow_run_id"
+            ]
+        },
+        "TM_6686": {
+            "description": "Name of folder in repositoy.",
+            "args": [
+                "subject_name"
+            ]
+        }
+    },
+    "session": {
+        "attributes": {
+            "key00": {
+                "name": "subject_id",
+                "sql": {
+                    "select": [
+                        "SELECT SUBJ_ID ",
+                        "FROM OPB_SUBJECT "
+                    ],
+                    "where": [
+                        "WHERE SUBJ_NAME = '{s[subject_name]}';"
+                    ]
+                }
+            },
+            "key10": {
+                "name": "workflow_id",
+                "sql": {
+                    "select": [
+                        "SELECT TASK_ID ",
+                        "FROM OPB_TASK "
+                    ],
+                    "where": [
+                        "WHERE SUBJECT_ID = {s[subject_id]} ",
+                        "AND TASK_NAME = '{s[workflow_name]}' ",
+                        "AND TASK_TYPE = 71 ",
+                        "AND IS_VISIBLE = 1;"
+                    ]
+                }
+            },
+            "key11": {
+                "name": "workflow_version_number",
+                "sql": {
+                    "select": [
+                        "SELECT VERSION_NUMBER ",
+                        "FROM OPB_TASK "
+                    ],
+                    "where": [
+                        "WHERE SUBJECT_ID = {s[subject_id]} ",
+                        "AND TASK_ID = {s[workflow_id]} ",
+                        "AND IS_VISIBLE = 1;"
+                    ]
+                }
+            },
+            "key15": {
+                "name": "parent_task_id",
+                "sql": {
+                    "select": [
+                        "SELECT PARENT_TASK_ID FROM ",
+                        "(SELECT W.TASK_ID AS PARENT_TASK_ID ",
+                            ",W.VERSION_NUMBER AS PARENT_TASK_VERSION_NUMBER ",
+                            ",TI.INSTANCE_NAME ",
+                        "FROM OPB_TASK W ",
+                        "INNER JOIN OPB_TASK_INST TI ",
+                            "ON W.TASK_ID = TI.WORKFLOW_ID ",
+                            "AND W.VERSION_NUMBER = TI.VERSION_NUMBER ",
+                            "AND W.TASK_TYPE IN (70, 71) ",
+                            "AND W.IS_VISIBLE = 1 ",
+                            "AND TI.TASK_TYPE in (68, 70) ",
+                        "INNER JOIN OPB_TASK T ",
+                            "ON TI.TASK_ID = T.TASK_ID ",
+                            "AND TI.TASK_TYPE = T.TASK_TYPE ",
+                            "AND T.IS_VISIBLE = 1 ",
+                        "START WITH W.TASK_ID = {s[workflow_id]} ",
+                             "CONNECT BY W.TASK_ID = PRIOR T.TASK_ID ",
+                             "AND W.VERSION_NUMBER = PRIOR T.VERSION_NUMBER) "
+                    ],
+                    "where": [
+                        "WHERE INSTANCE_NAME = '{s[session_instance_name]}';"
+                    ]
+                }
+            },
+            "key16": {
+                "name": "parent_task_version_number",
+                "sql": {
+                    "select": [
+                        "SELECT PARENT_TASK_VERSION_NUMBER FROM ",
+                        "(SELECT W.TASK_ID AS PARENT_TASK_ID ",
+                            ",W.VERSION_NUMBER AS PARENT_TASK_VERSION_NUMBER ",
+                            ",TI.INSTANCE_NAME ",
+                        "FROM OPB_TASK W ",
+                        "INNER JOIN OPB_TASK_INST TI ",
+                            "ON W.TASK_ID = TI.WORKFLOW_ID ",
+                            "AND W.VERSION_NUMBER = TI.VERSION_NUMBER ",
+                            "AND W.TASK_TYPE IN (70, 71) ",
+                            "AND W.IS_VISIBLE = 1 ",
+                            "AND TI.TASK_TYPE in (68, 70) ",
+                        "INNER JOIN OPB_TASK T ",
+                            "ON TI.TASK_ID = T.TASK_ID ",
+                            "AND TI.TASK_TYPE = T.TASK_TYPE ",
+                            "AND T.IS_VISIBLE = 1 ",
+                        "START WITH W.TASK_ID = {s[workflow_id]} ",
+                             "CONNECT BY W.TASK_ID = PRIOR T.TASK_ID ",
+                             "AND W.VERSION_NUMBER = PRIOR T.VERSION_NUMBER) "
+                    ],
+                    "where": [
+                        "WHERE INSTANCE_NAME = '{s[session_instance_name]}';"
+                    ]
+                }
+            },
+            "key17": {
+                "name": "session_instance_id",
+                "sql": {
+                    "select": [
+                        "SELECT INSTANCE_ID ",
+                        "FROM OPB_TASK_INST "
+                    ],
+                    "where": [
+                        "WHERE WORKFLOW_ID = {s[parent_task_id]} ",
+                        "AND VERSION_NUMBER = {s[parent_task_version_number]} ",
+                        "AND INSTANCE_NAME = '{s[session_instance_name]}';"
+                    ]
+                }
+            },
+            "key18": {
+                "name": "session_id",
+                "sql": {
+                    "select": [
+                        "SELECT TASK_ID ",
+                        "FROM OPB_TASK_INST "
+                    ],
+                    "where": [
+                        "WHERE WORKFLOW_ID = {s[parent_task_id]} ",
+                        "AND VERSION_NUMBER = {s[parent_task_version_number]} ",
+                        "AND INSTANCE_ID = {s[session_instance_id]};"
+                    ]
+                }
+            },
+            "key19": {
+                "name": "session_version_number",
+                "sql": {
+                    "select": [
+                        "SELECT VERSION_NUMBER ",
+                        "FROM OPB_TASK "
+                    ],
+                    "where": [
+                        "WHERE SUBJECT_ID = {s[subject_id]} ",
+                        "AND TASK_ID = {s[session_id]} ",
+                        "AND IS_VISIBLE = 1;"
+                    ]
+                }
+            },
+            "key20": {
+                "name": "repo_dtm_buffer_size",
+                "sql": {
+                    "select": [
+                        "SELECT ATTR_VALUE ",
+                        "FROM OPB_TASK_ATTR "
+                    ],
+                    "update": [
+                        "UPDATE OPB_TASK_ATTR ",
+                        "SET ATTR_VALUE = '{s[log_dtm_buffer_bytes]}' "
+                    ],
+                    "where": [
+                        "WHERE TASK_ID = {s[session_id]} ",
+                        "AND VERSION_NUMBER = {s[session_version_number]} ",
+                        "AND TASK_TYPE = 68 ",
+                        "AND ATTR_ID = 101 ",
+                        "AND LINE_NO = 1 ",
+                        "AND ATTR_VALUE IS NOT NULL;"
+                    ]
+                },
+                "source": "log_dtm_buffer_bytes",
+                "title": "DTM Buffer Size",
+                "threshold": 1.1
+            },
+            "key21": {
+                "name": "config_id",
+                "sql": {
+                    "select": [
+                        "SELECT REF_OBJ_ID ",
+                        "FROM OPB_COMPONENT "
+                    ],
+                    "where": [
+                        "WHERE TASK_ID = {s[session_id]} ",
+                        "AND VERSION_NUMBER = {s[session_version_number]} ",
+                        "AND OBJECT_TYPE = 72;"
+                    ]
+                }
+            },
+            "key22": {
+                "name": "config_version_number",
+                "sql": {
+                    "select": [
+                        "SELECT VERSION_NUMBER ",
+                        "FROM OPB_SESSION_CONFIG "
+                    ],
+                    "where": [
+                        "WHERE CONFIG_ID = {s[config_id]} ",
+                        "AND IS_VISIBLE = 1;"
+                    ]
+                }
+            },
+            "key23": {
+                "name": "repo_buffer_block_size",
+                "sql": {
+                    "select": [
+                        "SELECT ATTR_VALUE ",
+                        "FROM OPB_CFG_ATTR "
+                    ],
+                    "update": [
+                        "UPDATE OPB_CFG_ATTR ",
+                        "SET ATTR_VALUE = '{s[log_buffer_block_bytes]}' "
+                    ],
+                    "where": [
+                        "WHERE CONFIG_ID = {s[config_id]} ",
+                        "AND VERSION_NUMBER = {s[config_version_number]} ",
+                        "AND CONFIG_TYPE = 72 ",
+                        "AND ATTR_ID = 5 ",
+                        "AND LINE_NO = 1;"
+                    ]
+                },
+                "source": "log_buffer_block_bytes",
+                "title": "Default Buffer Block Size",
+                "threshold": 1.1
+            }
+        }
+    },
+    "widget": {
+        "attributes": {
+            "key00": {
+                "name": "session_widget_instance_id",
+                "sql": {
+                    "select": [
+                        "SELECT SESS_WIDG_INST_ID ",
+                        "FROM OPB_SWIDGET_INST "
+                    ],
+                    "where": [
+                        "WHERE SESSION_ID = {s[session_id]} ",
+                        "AND VERSION_NUMBER = {s[session_version_number]} ",
+                        "AND INSTANCE_NAME = '{w[widget_instance_name]}';"
+                    ]
+                }
+            },
+            "key01": {
+                "name": "widget_type_id",
+                "sql": {
+                    "select": [
+                        "SELECT WIDGET_TYPE ",
+                        "FROM OPB_SWIDGET_INST "
+                    ],
+                    "where": [
+                        "WHERE SESSION_ID = {s[session_id]} ",
+                        "AND VERSION_NUMBER = {s[session_version_number]} ",
+                        "AND SESS_WIDG_INST_ID = {w[session_widget_instance_id]};"
+                    ]
+                }
+            }
+        },
+        "types": {
+            "9": {
+                "name": "Aggregator",
+                "attributes": {
+                    "key00": {
+                        "name": "repo_data_cache_size",
+                        "sql": {
+                            "select": [
+                                "SELECT ATTR_VALUE ",
+                                "FROM OPB_SWIDGET_ATTR "
+                            ],
+                            "update": [
+                                "UPDATE OPB_SWIDGET_ATTR ",
+                                "SET ATTR_VALUE = {w[log_data_cache_bytes]} "
+                            ],
+                            "where": [
+                                "WHERE SESSION_ID = {s[session_id]} ",
+                                "AND VERSION_NUMBER = {s[session_version_number]} ",
+                                "AND SESS_WIDG_INST_ID = {w[session_widget_instance_id]} ",
+                                "AND LINE_NO = 1 ",
+                                "AND ATTR_ID = 4;"
+                            ]
+                        },
+                        "source": "log_data_cache_bytes",
+                        "title": "Data Cache Size",
+                        "threshold": 1.1
+                    },
+                    "key01": {
+                        "name": "repo_index_cache_size",
+                        "sql": {
+                            "select": [
+                                "SELECT ATTR_VALUE ",
+                                "FROM OPB_SWIDGET_ATTR "
+                            ],
+                            "update": [
+                                "UPDATE OPB_SWIDGET_ATTR ",
+                                "SET ATTR_VALUE = {w[log_index_cache_bytes]} "
+                            ],
+                            "where": [
+                                "WHERE SESSION_ID = {s[session_id]} ",
+                                "AND VERSION_NUMBER = {s[session_version_number]} ",
+                                "AND SESS_WIDG_INST_ID = {w[session_widget_instance_id]} ",
+                                "AND LINE_NO = 1 ",
+                                "AND ATTR_ID = 5;"
+                            ]
+                        },
+                        "source": "log_index_cache_bytes",
+                        "title": "Index Cache Size",
+                        "threshold": 1.1
+                    }
+                }
+            },
+            "11": {
+                "name": "Lookup Procedure",
+                "attributes": {
+                    "key00": {
+                        "name": "repo_data_cache_size",
+                        "sql": {
+                            "select": [
+                                "SELECT ATTR_VALUE ",
+                                "FROM OPB_SWIDGET_ATTR "
+                            ],
+                            "update": [
+                                "UPDATE OPB_SWIDGET_ATTR ",
+                                "SET ATTR_VALUE = {w[log_data_cache_bytes]} "
+                            ],
+                            "where": [
+                                "WHERE SESSION_ID = {s[session_id]} ",
+                                "AND VERSION_NUMBER = {s[session_version_number]} ",
+                                "AND SESS_WIDG_INST_ID = {w[session_widget_instance_id]} ",
+                                "AND LINE_NO = 1 ",
+                                "AND ATTR_ID = 13;"
+                            ]
+                        },
+                        "source": "log_data_cache_bytes",
+                        "title": "Data Cache Size",
+                        "threshold": 1.1
+                    },
+                    "key01": {
+                        "name": "repo_index_cache_size",
+                        "sql": {
+                            "select": [
+                                "SELECT ATTR_VALUE ",
+                                "FROM OPB_SWIDGET_ATTR "
+                            ],
+                            "update": [
+                                "UPDATE OPB_SWIDGET_ATTR ",
+                                "SET ATTR_VALUE = {w[log_index_cache_bytes]} "
+                            ],
+                            "where": [
+                                "WHERE SESSION_ID = {s[session_id]} ",
+                                "AND VERSION_NUMBER = {s[session_version_number]} ",
+                                "AND SESS_WIDG_INST_ID = {w[session_widget_instance_id]} ",
+                                "AND LINE_NO = 1 ",
+                                "AND ATTR_ID = 14;"
+                            ]
+                        },
+                        "source": "log_index_cache_bytes",
+                        "title": "Index Cache Size",
+                        "threshold": 1.1
+                    }
+                }
+            },
+            "12": {
+                "name": "Joiner",
+                "attributes": {
+                    "key00": {
+                        "name": "repo_data_cache_size",
+                        "sql": {
+                            "select": [
+                                "SELECT ATTR_VALUE ",
+                                "FROM OPB_SWIDGET_ATTR "
+                            ],
+                            "update": [
+                                "UPDATE OPB_SWIDGET_ATTR ",
+                                "SET ATTR_VALUE = {w[log_data_cache_bytes]} "
+                            ],
+                            "where": [
+                                "WHERE SESSION_ID = {s[session_id]} ",
+                                "AND VERSION_NUMBER = {s[session_version_number]} ",
+                                "AND SESS_WIDG_INST_ID = {w[session_widget_instance_id]} ",
+                                "AND LINE_NO = 1 ",
+                                "AND ATTR_ID = 13;"
+                            ]
+                        },
+                        "source": "log_data_cache_bytes",
+                        "title": "Data Cache Size",
+                        "threshold": 1.1
+                    },
+                    "key01": {
+                        "name": "repo_index_cache_size",
+                        "sql": {
+                            "select": [
+                                "SELECT ATTR_VALUE ",
+                                "FROM OPB_SWIDGET_ATTR "
+                            ],
+                            "update": [
+                                "UPDATE OPB_SWIDGET_ATTR ",
+                                "SET ATTR_VALUE = {w[log_index_cache_bytes]} "
+                            ],
+                            "where": [
+                                "WHERE SESSION_ID = {s[session_id]} ",
+                                "AND VERSION_NUMBER = {s[session_version_number]} ",
+                                "AND SESS_WIDG_INST_ID = {w[session_widget_instance_id]} ",
+                                "AND LINE_NO = 1 ",
+                                "AND ATTR_ID = 14;"
+                            ]
+                        },
+                        "source": "log_index_cache_bytes",
+                        "title": "Index Cache Size",
+                        "threshold": 1.1
+                    }
+                }
+            },
+            "80": {
+                "name": "Sorter",
+                "attributes": {
+                    "key00": {
+                        "name": "repo_data_cache_size",
+                        "sql": {
+                            "select": [
+                                "SELECT ATTR_VALUE ",
+                                "FROM OPB_SWIDGET_ATTR "
+                            ],
+                            "update": [
+                                "UPDATE OPB_SWIDGET_ATTR ",
+                                "SET ATTR_VALUE = {w[log_data_cache_bytes]} "
+                            ],
+                            "where": [
+                                "WHERE SESSION_ID = {s[session_id]} ",
+                                "AND VERSION_NUMBER = {s[session_version_number]} ",
+                                "AND SESS_WIDG_INST_ID = {w[session_widget_instance_id]} ",
+                                "AND LINE_NO = 1 ",
+                                "AND ATTR_ID = 13;"
+                            ]
+                        },
+                        "source": "log_data_cache_bytes",
+                        "title": "Data Cache Size",
+                        "threshold": 1.0
+                    }
+                }
+            }
+        }
+    },
+    "k_power": {
+        "KB": 1,
+        "MB": 2,
+        "GB": 3,
+        "TB": 4
+    },
+    "prompt": {
+        "running_xml": "Running XML conversion command...",
+        "title": "\n{0}",
+        "in_repo": "\tIn Repo: {0}",
+        "in_log": "\tIn Log: {0}",
+        "no_tuning": "\tNo tuning required.",
+        "no_recommendation": "\tNo recommendation.",
+        "updating": "\tUpdating {0} from {1} to {2} bytes...",
+        "update_success": "\tUpdate succeeded ({0}).",
+        "update_failure": "\tUpdate failed ({0})."
+    }
+}
