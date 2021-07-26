@@ -1,2 +1,2 @@
 # log-crawler
-Informatica Session Auto-tuner
+Informatica PowerCenter session auto-tuner (reads session log to determine which tuning mods are required)
